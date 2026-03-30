@@ -7,10 +7,10 @@ def optimize_schedule(df, time_col="czas_produkcji_h", alpha=1.0, beta=2.0):
     best_df = None
 
     strategies = {
-        "EDF": lambda d: d.sort_values("termin_dni"),
+        "EDF": lambda d: d.sort_values("termin_h"),
         "SPT": lambda d: d.sort_values(time_col),
         "LPT": lambda d: d.sort_values(time_col, ascending=False),
-        "Slack": lambda d: d.assign(slack=d["termin_dni"] * 24 - d[time_col]).sort_values("slack"),
+        "Slack": lambda d: d.assign(slack=d["termin_h"] - d[time_col]).sort_values("slack"),
     }
 
     for name, strategy in strategies.items():
@@ -23,7 +23,7 @@ def optimize_schedule(df, time_col="czas_produkcji_h", alpha=1.0, beta=2.0):
         for _, row in temp.iterrows():
             start = t
             end = start + row[time_col]
-            deadline = row["termin_dni"] * 24
+            deadline = row["termin_h"]
             late = max(0, end - deadline)
 
             t_start.append(start)
@@ -42,7 +42,6 @@ def optimize_schedule(df, time_col="czas_produkcji_h", alpha=1.0, beta=2.0):
             best_df["lateness_h"] = lateness
             best_df["strategy"] = name
 
-    best_df["lateness_d"] = (best_df["lateness_h"] / 24).round(2)
     best_df["total_time"] = best_df["t_end"].max()
     best_df["total_lateness"] = best_df["lateness_h"].sum()
     return best_df
@@ -55,7 +54,7 @@ def simulate_schedule(df, time_col="czas_produkcji_h"):
     for _, row in df.iterrows():
         start = t
         end = start + row[time_col]
-        deadline = row["termin_dni"] * 24
+        deadline = row["termin_h"]
         late = max(0, end - deadline)
 
         t_start.append(start)
@@ -67,7 +66,6 @@ def simulate_schedule(df, time_col="czas_produkcji_h"):
     out["t_start"] = t_start
     out["t_end"] = t_end
     out["lateness_h"] = lateness
-    out["lateness_d"] = (out["lateness_h"] / 24).round(2)
     return out
 
 
@@ -77,8 +75,8 @@ def extract_schedule_features(df):
         "mean_time": df["czas_produkcji_h"].mean(),
         "std_time": df["czas_produkcji_h"].std(),
         "max_time": df["czas_produkcji_h"].max(),
-        "mean_deadline": df["termin_dni"].mean() * 24,
-        "load_ratio": df["czas_produkcji_h"].sum() / (df["termin_dni"].sum() * 24),
+        "mean_deadline": df["termin_h"].mean(),
+        "load_ratio": df["czas_produkcji_h"].sum() / (df["termin_h"].sum() + 1e-6),
     }
 
 

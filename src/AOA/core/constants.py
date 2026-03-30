@@ -26,4 +26,4 @@ SCHEDULE_FEATURES = [
     "load_ratio",
 ]
 
-FEATURES = ["cena", "odpad", "termin_dni", "czas_produkcji_h"]
+FEATURES = ["cena", "odpad", "termin_h", "czas_produkcji_h"]

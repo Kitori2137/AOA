@@ -1,7 +1,12 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "TOOLS"
-version = "0.1.1"
-description = "AOA"
+name = "aoa"
+version = "0.2.0"
+description = "Production Optimization / AOA"
+readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pandas",
@@ -14,11 +19,19 @@ dependencies = [
     "scikit-learn",
 ]
 
+[project.scripts]
+aoa = "AOA.app:main"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3.5",
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
 testpaths = ["tests"]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -47,8 +47,15 @@ TOOLS/
 │       │   ├── models.py
 │       │   ├── scheduling.py
 │       │   ├── services.py
+│       │   ├── sto_models.py
 │       │   ├── visualization_service.py
 │       │   └── diagrams/
+│       │       ├── __init__.py
+│       │       ├── correlation_matrix.py
+│       │       ├── decision_tree_diagram.py
+│       │       ├── gantt_chart.py
+│       │       ├── line_chart.py
+│       │       └── similarity_matrix.py
 │       ├── gui/
 │       │   ├── __init__.py
 │       │   ├── main_window.py
@@ -67,9 +74,13 @@ TOOLS/
 │   └── core/
 │       ├── test_data_generation.py
 │       ├── test_data_io.py
+│       ├── test_dataset_ops.py
 │       ├── test_features.py
 │       ├── test_models.py
-│       └── test_scheduling.py
+│       ├── test_scheduling.py
+│       ├── test_services_extra.py
+│       ├── test_sto_models.py
+│       └── test_visualization_service.py
 ├── CHANGELOG.md
 ├── README.md
 ├── pyproject.toml
@@ -85,49 +96,22 @@ TOOLS/
 
 ### Wersja z `uv`
 
-#### 1. Przejdź do katalogu projektu
-
+#### 1. Sklonuj repozytorium i przejdź do katalogu projektu
 
 ```bash
-cd C:\Users\stasi\PycharmProjects\TOOLS
+git clone git@github.com:UZ-FENS/passthebranch-Kitori2137.git
+cd passthebranch-Kitori2137
 ```
 
-#### 2. Sprawdź wersje uv
+#### 2. Zainstaluj zależności i uruchom aplikację
 ```bash
-py -m uv --version
+py -m uv sync --dev
+py -m uv run aoa
 ```
 
-#### 3. Zainstaluj zależności i zsynchronizuj środowisko
+#### 3. Uruchom testy
 ```bash
-py -m uv sync
-```
-
-#### 4. Uruchom aplikację
-
-W PowerShell:
-```bash
-.\.venv\Scripts\Activate.ps1
-$env:PYTHONPATH="C:\Users\stasi\PycharmProjects\TOOLS\src"
-python -m AOA.app
-```
-W Git Bash:
-```bash
-.\.venv\Scripts\Activate.ps1
-export PYTHONPATH="$PWD/src"
-python -m AOA.app
-```
-#### 5. Uruchom testy
-
-W PowerShell:
-```bash
-$env:PYTHONPATH="C:\Users\stasi\PycharmProjects\TOOLS\src"
-pytest
-```
-
-W Git Bash:
-```bash
-export PYTHONPATH="$PWD/src"
-pytest
+py -m uv run pytest
 ```
 
 ---
@@ -137,45 +121,26 @@ pytest
 
 ### Wersja bez `uv`
 
-#### 1. Przejdź do katalogu projektu
+#### 1. Sklonuj repozytorium i przejdź do katalogu projektu
 
 ```bash
-cd C:\Users\stasi\PycharmProjects\TOOLS
+git clone git@github.com:UZ-FENS/passthebranch-Kitori2137.git
+cd passthebranch-Kitori2137
 ```
-
-#### 2. Utwórz środowisko wirtualne
+#### 2. Utwórz i aktywuj środowisko wirtualne
 ```bash
 python -m venv .venv
-```
-#### 3. Aktywuj środowisko
-
-PowerShell:
-```bash
 .\.venv\Scripts\Activate.ps1
 ```
-Git Bash:
+#### 3. Zainstaluj projekt
 ```bash
-source .venv/Scripts/activate
+pip install -e .
 ```
-#### 4. Zainstaluj zależności
-```bash
-pip install pandas numpy matplotlib seaborn customtkinter tabulate scipy scikit-learn pytest
-```
-#### 5. Ustaw PYTHONPATH
-
-PowerShell:
-```bash
-$env:PYTHONPATH="C:\Users\stasi\PycharmProjects\TOOLS\src"
-```
-Git Bash:
-```bash
-export PYTHONPATH="$PWD/src"
-```
-#### 6. Uruchom aplikację
+#### 4. Uruchom aplikację
 ```bash
 python -m AOA.app
 ```
-#### 7. Uruchom testy
+#### 5. Uruchom testy
 ```bash
 pytest
 ```
@@ -183,48 +148,60 @@ pytest
 
 ---
 
-## Segment 5 — aktualny stan projektu
-
-
 ## Aktualny stan projektu
 
-Na obecnym etapie projekt posiada już stabilny fundament techniczny i spełnia założenia pierwszego etapu rozwoju.
+Na obecnym etapie projekt posiada stabilny fundament techniczny i spełnia założenia pierwszego etapu rozwoju. Aplikacja została uporządkowana architektonicznie, a jej podstawowe moduły działają w sposób spójny i testowalny.
 
 ### Zrealizowane elementy
 
 - wydzielenie warstwy `core`,
-- oddzielenie logiki aplikacyjnej od GUI,
-- modularna struktura projektu,
-- obsługa generowania danych,
-- obsługa wczytywania plików CSV,
+- oddzielenie logiki aplikacyjnej od warstwy GUI,
+- modularna struktura projektu oparta o układ `src/`,
+- obsługa generowania danych testowych,
+- obsługa wczytywania danych z plików CSV,
 - przygotowanie cech do modeli ML,
-- trenowanie modeli:
+- trenowanie wielu modeli jednocześnie,
+- automatyczny zapis modeli do osobnych plików z unikalnymi nazwami,
+- obsługa modeli:
   - Random Forest dla jakości,
   - Gradient Boosting dla opóźnień,
   - Random Forest dla strategii harmonogramowania,
+- obsługa heurystycznych modeli STO:
+  - `MT`,
+  - `MO`,
+  - `MZO`,
+  - `GENETIC`,
+- analiza sumy dodatnich opóźnień dla różnych kolejności zleceń,
 - podstawowe operacje analityczne i ewaluacyjne,
 - wizualizacje danych i modeli,
+- podgląd danych w interfejsie aplikacji,
 - dokumentacja użytkownika i dokumentacja teoretyczna,
 - testy jednostkowe dla warstwy `core`,
 - plik `CHANGELOG.md`,
-- przygotowanie projektu do wersjonowania i release’ów.
+- przygotowanie projektu do wersjonowania oraz release’ów.
 
 ### Aktualny charakter projektu
 
 Projekt jest obecnie działającą aplikacją analityczno-edukacyjną, która pozwala:
 
 - trenować modele na danych przykładowych lub własnych,
+- generować własne zestawy danych z kontrolą parametrów wejściowych,
 - analizować dane w interfejsie graficznym,
+- porównywać różne podejścia do harmonogramowania,
+- uruchamiać analizy STO dla ręcznie podanych zleceń,
 - generować podstawowe wizualizacje,
 - przeglądać wyniki regresji i klasyfikacji,
-- zapisywać wyniki do plików.
+- zapisywać wyniki oraz modele do plików.
+
+Obecna wersja projektu stanowi działającą bazę do dalszej rozbudowy zarówno pod kątem funkcjonalnym, jak i architektonicznym.
 
 ## Plan na kolejny update
 
 - rozbudowa liczby dostępnych modeli,
 - dodanie bardziej zaawansowanych wykresów,
+- optymalizacja kodu,
 - rozszerzenie testów jednostkowych,
-- rozbudowa dokumentacji technicznej,
+
 
 ## Plany na updaty w przyszłym miesiącu
 - dalsze oczyszczenie architektury i refaktoryzacja modułów,

@@ -1,6 +1,65 @@
 # CHANGELOG
 
-# CHANGELOG
+## [0.2.0] - 2026-03-30
+
+### Added
+- Dodano obsługę heurystycznych modeli STO w osobnym module `core/sto_models.py`.
+- Dodano modele STO:
+  - `MT` – sortowanie według terminu realizacji,
+  - `MO` – sortowanie według najkrótszego czasu wykonania,
+  - `MZO` – sortowanie według najdłuższego czasu wykonania,
+  - `GENETIC` – model genetyczny / optymalizacyjny minimalizujący STO.
+- Dodano raportowanie wyników STO, w tym:
+  - kolejność zleceń dla każdego modelu,
+  - wartość STO,
+  - przebieg liczenia krok po kroku,
+  - wskazanie najlepszego i najgorszego modelu.
+- Dodano nowe testy jednostkowe dla:
+  - `dataset_ops`,
+  - `services`,
+  - `sto_models`,
+  - `visualization_service`.
+
+### Changed
+- Przebudowano `main_page.py` i rozszerzono interfejs o:
+  - wybór wielu modeli ML jednocześnie,
+  - konfigurację liczby rekordów,
+  - konfigurację liczby maszyn,
+  - konfigurację zakresu czasu produkcji,
+  - konfigurację zakresu bufora terminu,
+  - wybór kształtów i materiałów,
+  - panel podsumowania aktualnych ustawień,
+  - panel statusu danych,
+  - podgląd danych w zakładce głównej,
+  - sekcję analizy STO wraz z polem wynikowym.
+- Zmieniono generowanie danych tak, aby użytkownik mógł samodzielnie określać parametry wejściowe.
+- Zmieniono logikę terminów z `termin_dni` na `termin_h`.
+- Zmieniono przygotowanie danych tak, aby `termin_h` był zawsze większy od `czas_produkcji_h`.
+- Zmieniono sposób zapisu modeli:
+  - modele nie są już zapisywane wyłącznie jako `model.pkl`,
+  - nazwa pliku modelu zawiera wybrane modele, parametry generowania, wybrane kształty, wybrane materiały oraz znacznik czasu.
+- Zaktualizowano `guide.md` o:
+  - nowy sposób generowania danych,
+  - opis modeli STO,
+  - opis nowych parametrów treningu i zapisu modeli.
+- Zaktualizowano `README.md`:
+  - poprawiono instrukcję uruchamiania projektu,
+  - dodano poprawny sposób uruchamiania przez `uv`,
+  - uproszczono opis instalacji bez `uv`,
+  - zaktualizowano strukturę repozytorium,
+  - zaktualizowano opis aktualnego stanu projektu.
+
+### Fixed
+- Naprawiono układ głównej zakładki tak, aby wszystkie sekcje były dostępne i czytelne.
+- Przywrócono możliwość podglądu wygenerowanych lub wczytanych danych w zakładce głównej.
+- Poprawiono organizację GUI tak, aby warstwa prezentacji korzystała z gotowych funkcji z `core`, bez umieszczania tam logiki biznesowej.
+- Poprawiono strukturę projektu i dokumentacji pod kątem uruchamiania bez ręcznego ustawiania `PYTHONPATH`.
+
+### Improved
+- Uporządkowano podział odpowiedzialności między `core` i `gui`.
+- Rozszerzono architekturę projektu o osobny moduł dla modeli STO.
+- Zwiększono elastyczność eksperymentowania z danymi, modelami i porównywaniem różnych podejść do harmonogramowania.
+- Poprawiono przygotowanie projektu do dalszej rozbudowy i kolejnych wersji.
 
 ## [0.1.1] - 2026-03-23
 

@@ -27,22 +27,25 @@ def train_schedule_model(df, n_samples=200, progress_callback=None):
     return model
 
 
-def train_selected_models(df_train, choice="Oba", progress_callback=None):
+def train_selected_models(df_train, selected_models, progress_callback=None):
+    if not selected_models:
+        raise ValueError("Nie wybrano żadnego modelu do trenowania")
+
     X_train, yq, yd, scaler = prepare_features(df_train)
 
     quality_model = None
     delay_model = None
     schedule_model = None
 
-    if choice in ("Quality", "Oba"):
+    if "Quality" in selected_models:
         quality_model = RandomForestRegressor(n_estimators=300, random_state=42)
         quality_model.fit(X_train, yq)
 
-    if choice in ("Delay", "Oba"):
+    if "Delay" in selected_models:
         delay_model = GradientBoostingRegressor(n_estimators=300, random_state=42)
         delay_model.fit(X_train, yd)
 
-    if choice in ("Schedule", "Oba"):
+    if "Schedule" in selected_models:
         schedule_model = train_schedule_model(df_train, progress_callback=progress_callback)
 
     return {
@@ -50,6 +53,7 @@ def train_selected_models(df_train, choice="Oba", progress_callback=None):
         "delay": delay_model,
         "schedule": schedule_model,
         "scaler": scaler,
+        "selected_models": selected_models,
     }
 
 
