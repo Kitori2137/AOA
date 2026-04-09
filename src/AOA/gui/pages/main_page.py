@@ -1,4 +1,6 @@
 import threading
+from pathlib import Path
+
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
 
@@ -10,8 +12,12 @@ from AOA.core.services import (
     build_main_page_summary,
     generate_and_store_datasets_from_config,
     load_training_data,
+    load_model_pack,
     solve_models_flow,
+    solve_sto_with_saved_model,
+    split_selected_models,
     train_models_flow,
+    train_sto_models_flow,
 )
 from AOA.utils.error_utils import write_exception_log
 
@@ -23,12 +29,18 @@ class MainPage(ctk.CTkFrame):
         self.df_train = None
         self.df_test = None
         self.df_full = None
+        self.loaded_data_path = None
         self.last_generation_metadata = {}
+        self._last_progress_per_model = {}
 
         self.model_vars = {
             "Quality": ctk.BooleanVar(value=True),
             "Delay": ctk.BooleanVar(value=False),
             "Schedule": ctk.BooleanVar(value=False),
+            "MT": ctk.BooleanVar(value=True),
+            "MO": ctk.BooleanVar(value=True),
+            "MZO": ctk.BooleanVar(value=True),
+            "GENETIC": ctk.BooleanVar(value=True),
         }
 
         self.ksztalt_vars = {
@@ -42,13 +54,6 @@ class MainPage(ctk.CTkFrame):
             "mikrofibra": ctk.BooleanVar(value=True),
             "poliester": ctk.BooleanVar(value=True),
             "wiskoza": ctk.BooleanVar(value=True),
-        }
-
-        self.sto_vars = {
-            "MT": ctk.BooleanVar(value=True),
-            "MO": ctk.BooleanVar(value=True),
-            "MZO": ctk.BooleanVar(value=True),
-            "GENETIC": ctk.BooleanVar(value=True),
         }
 
         self.n_var = ctk.StringVar(value="5000")
@@ -76,18 +81,17 @@ class MainPage(ctk.CTkFrame):
         ctk.CTkLabel(
             header,
             text="ML / Optymalizacja",
-            font=("Arial", 24, "bold")
+            font=("Arial", 24, "bold"),
         ).pack(anchor="w", padx=15, pady=(12, 2))
 
         ctk.CTkLabel(
             header,
             text="Konfiguracja generowania danych, wyboru modeli i analiz STO",
-            font=("Arial", 12)
+            font=("Arial", 12),
         ).pack(anchor="w", padx=15, pady=(0, 12))
 
         content = ctk.CTkFrame(self)
         content.pack(fill="both", expand=True, padx=20, pady=10)
-
         content.grid_columnconfigure(0, weight=3)
         content.grid_columnconfigure(1, weight=1)
         content.grid_rowconfigure(0, weight=1)
@@ -119,24 +123,55 @@ class MainPage(ctk.CTkFrame):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="x", padx=10, pady=(10, 8))
 
-        ctk.CTkLabel(frame, text="Wybór modeli ML", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Wybór modeli",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
-        checks = ctk.CTkFrame(frame)
-        checks.pack(fill="x", padx=10, pady=(0, 12))
+        ml_frame = ctk.CTkFrame(frame)
+        ml_frame.pack(fill="x", padx=10, pady=(0, 8))
 
-        for name, var in self.model_vars.items():
+        ctk.CTkLabel(
+            ml_frame,
+            text="Modele ML",
+            font=("Arial", 15, "bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 6))
+
+        for name in ("Quality", "Delay", "Schedule"):
             ctk.CTkCheckBox(
-                checks,
+                ml_frame,
                 text=name,
-                variable=var,
-                command=self.render_summary
+                variable=self.model_vars[name],
+                command=self.render_summary,
+            ).pack(anchor="w", padx=10, pady=4)
+
+        sto_frame = ctk.CTkFrame(frame)
+        sto_frame.pack(fill="x", padx=10, pady=(0, 12))
+
+        ctk.CTkLabel(
+            sto_frame,
+            text="Modele heurystyczne STO",
+            font=("Arial", 15, "bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 6))
+
+        for name in ("MT", "MO", "MZO", "GENETIC"):
+            ctk.CTkCheckBox(
+                sto_frame,
+                text=name,
+                variable=self.model_vars[name],
+                command=self.render_summary,
             ).pack(anchor="w", padx=10, pady=4)
 
     def _build_generation_section(self, parent):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Parametry generowania danych", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Parametry generowania danych",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
         grid = ctk.CTkFrame(frame)
         grid.pack(fill="x", padx=10, pady=(0, 10))
@@ -154,7 +189,12 @@ class MainPage(ctk.CTkFrame):
             if isinstance(child, ctk.CTkEntry):
                 child.bind("<KeyRelease>", lambda _e: self.render_summary())
 
-        ctk.CTkLabel(frame, text="Kształty", font=("Arial", 15, "bold")).pack(anchor="w", padx=15, pady=(4, 4))
+        ctk.CTkLabel(
+            frame,
+            text="Kształty",
+            font=("Arial", 15, "bold"),
+        ).pack(anchor="w", padx=15, pady=(4, 4))
+
         shapes_frame = ctk.CTkFrame(frame)
         shapes_frame.pack(fill="x", padx=10, pady=(0, 8))
 
@@ -163,10 +203,15 @@ class MainPage(ctk.CTkFrame):
                 shapes_frame,
                 text=name,
                 variable=var,
-                command=self.render_summary
+                command=self.render_summary,
             ).pack(anchor="w", padx=10, pady=4)
 
-        ctk.CTkLabel(frame, text="Materiały", font=("Arial", 15, "bold")).pack(anchor="w", padx=15, pady=(4, 4))
+        ctk.CTkLabel(
+            frame,
+            text="Materiały",
+            font=("Arial", 15, "bold"),
+        ).pack(anchor="w", padx=15, pady=(4, 4))
+
         mat_frame = ctk.CTkFrame(frame)
         mat_frame.pack(fill="x", padx=10, pady=(0, 12))
 
@@ -175,21 +220,18 @@ class MainPage(ctk.CTkFrame):
                 mat_frame,
                 text=name,
                 variable=var,
-                command=self.render_summary
+                command=self.render_summary,
             ).pack(anchor="w", padx=10, pady=4)
 
     def _build_sto_section(self, parent):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Modele heurystyczne STO", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
-        ctk.CTkLabel(frame, text="Analiza kolejności zleceń i sumy dodatnich opóźnień.", font=("Arial", 12)).pack(anchor="w", padx=15, pady=(0, 8))
-
-        methods_frame = ctk.CTkFrame(frame)
-        methods_frame.pack(fill="x", padx=10, pady=(0, 10))
-
-        for name, var in self.sto_vars.items():
-            ctk.CTkCheckBox(methods_frame, text=name, variable=var).pack(anchor="w", padx=10, pady=4)
+        ctk.CTkLabel(
+            frame,
+            text="Wejście ręczne dla STO",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
         grid = ctk.CTkFrame(frame)
         grid.pack(fill="x", padx=10, pady=(0, 10))
@@ -200,30 +242,61 @@ class MainPage(ctk.CTkFrame):
 
         ctk.CTkButton(
             frame,
-            text="Policz modele STO",
+            text="Policz tylko STO ręcznie",
             command=self.run_sto_analysis,
-            height=36
+            height=36,
         ).pack(fill="x", padx=15, pady=(0, 12))
 
     def _build_actions_section(self, parent):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="x", padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Akcje ML", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 10))
+        ctk.CTkLabel(
+            frame,
+            text="Akcje",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 10))
 
         btns = ctk.CTkFrame(frame)
         btns.pack(fill="x", padx=10, pady=(0, 12))
 
-        ctk.CTkButton(btns, text="Generuj dane", command=self.gen, height=38).pack(fill="x", padx=10, pady=6)
-        ctk.CTkButton(btns, text="Wczytaj dane (CSV)", command=self.load_from_disk, height=38).pack(fill="x", padx=10, pady=6)
-        ctk.CTkButton(btns, text="Trenuj wybrane modele", command=self.train, height=38).pack(fill="x", padx=10, pady=6)
-        ctk.CTkButton(btns, text="▶ Rozwiąż istniejące modele", command=self.solve_existing_models, height=38).pack(fill="x", padx=10, pady=6)
+        ctk.CTkButton(
+            btns,
+            text="Generuj dane",
+            command=self.gen,
+            height=38,
+        ).pack(fill="x", padx=10, pady=6)
+
+        ctk.CTkButton(
+            btns,
+            text="Wczytaj dane (CSV)",
+            command=self.load_from_disk,
+            height=38,
+        ).pack(fill="x", padx=10, pady=6)
+
+        ctk.CTkButton(
+            btns,
+            text="Uruchom / zapisz wybrane modele",
+            command=self.train,
+            height=38,
+        ).pack(fill="x", padx=10, pady=6)
+
+        ctk.CTkButton(
+            btns,
+            text="▶ Rozwiąż zapisany model na wybranych danych",
+            command=self.solve_existing_models,
+            height=38,
+        ).pack(fill="x", padx=10, pady=6)
 
     def _build_preview_section(self, parent):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="both", expand=True, padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Podgląd danych", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Podgląd danych",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
         self.preview_box = ctk.CTkTextbox(frame, height=220)
         self.preview_box.pack(fill="both", expand=True, padx=15, pady=(0, 15))
@@ -233,7 +306,11 @@ class MainPage(ctk.CTkFrame):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="both", expand=True, padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Wyniki STO", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Wyniki STO",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
         self.sto_box = ctk.CTkTextbox(frame, height=260)
         self.sto_box.pack(fill="both", expand=True, padx=15, pady=(0, 15))
@@ -243,18 +320,27 @@ class MainPage(ctk.CTkFrame):
         frame = ctk.CTkFrame(parent)
         frame.pack(fill="both", expand=True, padx=10, pady=(8, 10))
 
-        ctk.CTkLabel(frame, text="Log", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Log",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
         self.logbox = ctk.CTkTextbox(frame, height=220)
         self.logbox.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self.logbox.configure(state="disabled")
 
     def _build_summary_section(self, parent):
         frame = ctk.CTkFrame(parent)
         frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10, 8))
 
-        ctk.CTkLabel(frame, text="Podsumowanie wyboru", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Podsumowanie wyboru",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
-        self.summary_box = ctk.CTkTextbox(frame, height=300)
+        self.summary_box = ctk.CTkTextbox(frame, height=320)
         self.summary_box.pack(fill="x", padx=15, pady=(0, 15))
         self.summary_box.configure(state="disabled")
 
@@ -262,24 +348,37 @@ class MainPage(ctk.CTkFrame):
         frame = ctk.CTkFrame(parent)
         frame.grid(row=1, column=0, sticky="ew", padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Szybki status", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Szybki status",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
-        self.status_label = ctk.CTkLabel(frame, text="", font=("Arial", 13), justify="left")
+        self.status_label = ctk.CTkLabel(
+            frame,
+            text="",
+            font=("Arial", 13),
+            justify="left",
+        )
         self.status_label.pack(anchor="w", padx=15, pady=(0, 12))
 
     def _build_right_hint_section(self, parent):
         frame = ctk.CTkFrame(parent)
         frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=8)
 
-        ctk.CTkLabel(frame, text="Panel boczny", font=("Arial", 18, "bold")).pack(anchor="w", padx=15, pady=(12, 8))
+        ctk.CTkLabel(
+            frame,
+            text="Panel boczny",
+            font=("Arial", 18, "bold"),
+        ).pack(anchor="w", padx=15, pady=(12, 8))
 
         hint = (
-            "Po prawej masz stały podgląd aktualnych ustawień.\n\n"
-            "Po lewej możesz przewijać pełną konfigurację,\n"
-            "sekcję STO, dane oraz logi.\n\n"
-            "Wyniki heurystyk STO pojawią się tylko wtedy,\n"
-            "gdy wybierzesz przynajmniej jeden z modeli:\n"
-            "MT / MO / MZO / GENETIC."
+            "ML działa jak wcześniej.\n\n"
+            "STO działa teraz też dwustopniowo:\n"
+            "1) zapisujesz model STO,\n"
+            "2) później wybierasz zapisany model i dane.\n\n"
+            "Pliki wynikowe mają teraz nazwę:\n"
+            "wynik_priority_MODEL_DANE_DATA.csv"
         )
 
         ctk.CTkLabel(
@@ -287,19 +386,31 @@ class MainPage(ctk.CTkFrame):
             text=hint,
             justify="left",
             wraplength=280,
-            font=("Arial", 12)
+            font=("Arial", 12),
         ).pack(anchor="w", padx=15, pady=(0, 15))
 
     def _entry(self, parent, label, var, row, col):
-        ctk.CTkLabel(parent, text=label).grid(row=row, column=col, sticky="w", padx=10, pady=6)
+        ctk.CTkLabel(parent, text=label).grid(
+            row=row,
+            column=col,
+            sticky="w",
+            padx=10,
+            pady=6,
+        )
         entry = ctk.CTkEntry(parent, textvariable=var, width=160)
         entry.grid(row=row, column=col + 1, sticky="w", padx=10, pady=6)
 
     def _ui_config(self):
         return {
-            "selected_models": [name for name, var in self.model_vars.items() if var.get()],
-            "selected_ksztalty": [name for name, var in self.ksztalt_vars.items() if var.get()],
-            "selected_materialy": [name for name, var in self.material_vars.items() if var.get()],
+            "selected_models": [
+                name for name, var in self.model_vars.items() if var.get()
+            ],
+            "selected_ksztalty": [
+                name for name, var in self.ksztalt_vars.items() if var.get()
+            ],
+            "selected_materialy": [
+                name for name, var in self.material_vars.items() if var.get()
+            ],
             "n": self.n_var.get(),
             "n_machines": self.n_machines_var.get(),
             "test_size": self.test_size_var.get(),
@@ -318,10 +429,16 @@ class MainPage(ctk.CTkFrame):
         self.summary_box.configure(state="disabled")
 
     def render_status(self):
-        self.status_label.configure(text=build_main_page_status(self.df_train, self.df_test))
+        self.status_label.configure(
+            text=build_main_page_status(self.df_train, self.df_test)
+        )
 
     def render_preview(self):
-        text = build_dataframe_preview_text(self.df_full, title="Podgląd pełnego zbioru", max_rows=15)
+        text = build_dataframe_preview_text(
+            self.df_full,
+            title="Podgląd pełnego zbioru",
+            max_rows=15,
+        )
         self.preview_box.configure(state="normal")
         self.preview_box.delete("1.0", "end")
         self.preview_box.insert("end", text)
@@ -339,11 +456,8 @@ class MainPage(ctk.CTkFrame):
     def _safe_showerror(self, title: str, msg: str):
         self.after(0, lambda: messagebox.showerror(title, msg))
 
-    def _safe_render_status(self):
-        self.after(0, self.render_status)
-
-    def _safe_render_preview(self):
-        self.after(0, self.render_preview)
+    def _safe_render_sto_report(self, report: str):
+        self.after(0, lambda: self.render_sto_report(report))
 
     def log(self, msg: str):
         self.logbox.configure(state="normal")
@@ -351,16 +465,66 @@ class MainPage(ctk.CTkFrame):
         self.logbox.see("end")
         self.logbox.configure(state="disabled")
 
+    def _on_train_progress(self, model_name: str, percent: float, detail: str = ""):
+        last_percent = self._last_progress_per_model.get(model_name, -1.0)
+
+        should_log = False
+        if percent >= 100.0:
+            should_log = True
+        elif last_percent < 0:
+            should_log = True
+        elif (percent - last_percent) >= 0.5:
+            should_log = True
+
+        if not should_log:
+            return
+
+        self._last_progress_per_model[model_name] = percent
+        suffix = f" | {detail}" if detail else ""
+        self._safe_log(f"⏳ {model_name}: {percent:.1f}%{suffix}")
+
+    def _log_sto_results(self, sto_result: dict):
+        results = sto_result.get("results", [])
+        best = sto_result.get("best_result")
+        saved_paths = sto_result.get("saved_paths", [])
+        best_path = sto_result.get("best_path")
+
+        self._safe_log("===== WYNIKI STO =====")
+
+        if best is not None:
+            self._safe_log(
+                f"🏆 Najlepszy model: {best['method']} | STO={best['sto']:.3f} | "
+                f"Kolejność: {', '.join(best['order'])}"
+            )
+
+        for index, result in enumerate(results, start=1):
+            self._safe_log("")
+            self._safe_log(f"[{index}] MODEL: {result['method']}")
+            self._safe_log(f"    STO: {result['sto']:.3f}")
+            self._safe_log(f"    Kolejność: {', '.join(result['order'])}")
+            self._safe_log(f"    Czas całkowity: {result['completion_total']:.3f}")
+            self._safe_log(f"    Max T+: {result['max_positive_delay']:.3f}")
+
+        if saved_paths:
+            self._safe_log("")
+            self._safe_log("===== ZAPISANE PLIKI STO =====")
+            for item in saved_paths:
+                self._safe_log(
+                    f"- {item['method']} | STO={item['sto']:.3f} | {item['path']}"
+                )
+
+        if best_path:
+            self._safe_log(f"- BEST | {best_path}")
+
     def gen(self):
         try:
             cfg = self._ui_config()
-
             result = generate_and_store_datasets_from_config(cfg)
 
             self.df_full = result["full_df"]
             self.df_train = result["train_df"]
             self.df_test = result["test_df"]
-
+            self.loaded_data_path = result["full_path"]
             self.last_generation_metadata = {
                 "n": int(cfg["n"]),
                 "n_machines": int(cfg["n_machines"]),
@@ -378,17 +542,17 @@ class MainPage(ctk.CTkFrame):
             messagebox.showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.gen", e)
-            self.log(f"❌ Nieoczekiwany błąd. Szczegóły zapisano w: {log_path}")
+            self.log(f"❌ Nieoczekiwany błąd.\nSzczegóły zapisano w: {log_path}")
             messagebox.showerror(
                 "Błąd",
-                "Wystąpił nieoczekiwany błąd podczas generowania danych."
+                "Wystąpił nieoczekiwany błąd podczas generowania danych.",
             )
 
     def load_from_disk(self):
         path = filedialog.askopenfilename(
             title="Wybierz plik CSV",
             initialdir=str(DATA_DIR),
-            filetypes=[("CSV", "*.csv")]
+            filetypes=[("CSV", "*.csv")],
         )
         if not path:
             return
@@ -399,6 +563,7 @@ class MainPage(ctk.CTkFrame):
             self.df_full = result["full_df"]
             self.df_train = result["train_df"]
             self.df_test = result["test_df"]
+            self.loaded_data_path = path
 
             for line in result["messages"]:
                 self.log(line)
@@ -412,49 +577,73 @@ class MainPage(ctk.CTkFrame):
             messagebox.showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.load_from_disk", e)
-            self.log(f"❌ Nieoczekiwany błąd. Szczegóły zapisano w: {log_path}")
+            self.log(f"❌ Nieoczekiwany błąd.\nSzczegóły zapisano w: {log_path}")
             messagebox.showerror(
                 "Błąd",
-                "Wystąpił nieoczekiwany błąd podczas wczytywania danych."
+                "Wystąpił nieoczekiwany błąd podczas wczytywania danych.",
             )
 
     def train(self):
-        if self.df_train is None:
-            messagebox.showerror("Błąd", "Brak danych treningowych")
+        cfg = self._ui_config()
+        selected_models = cfg["selected_models"]
+        ml_models, sto_models = split_selected_models(selected_models)
+
+        if not ml_models and not sto_models:
+            messagebox.showerror("Błąd", "Wybierz przynajmniej jeden model.")
             return
 
-        selected_models = self._ui_config()["selected_models"]
-        if not selected_models:
-            messagebox.showerror("Błąd", "Wybierz przynajmniej jeden model")
+        if ml_models and self.df_train is None:
+            messagebox.showerror("Błąd", "Brak danych treningowych.")
             return
 
-        threading.Thread(target=self.train_worker, args=(selected_models,), daemon=True).start()
+        threading.Thread(
+            target=self.train_worker,
+            args=(ml_models, sto_models),
+            daemon=True,
+        ).start()
 
-    def train_worker(self, selected_models):
+    def train_worker(self, ml_models, sto_models):
         try:
-            result = train_models_flow(
-                df_train=self.df_train,
-                selected_models=selected_models,
-                metadata=self.last_generation_metadata,
-                progress_callback=lambda p: self._safe_log(f"⏳ ScheduleModel: {p:.1f}%")
-            )
+            self._last_progress_per_model = {}
 
-            for line in result["messages"]:
-                self._safe_log(line)
+            if ml_models:
+                self._safe_log(f"▶ Start treningu ML: {', '.join(ml_models)}")
+
+                result = train_models_flow(
+                    df_train=self.df_train,
+                    selected_models=ml_models,
+                    metadata=self.last_generation_metadata,
+                    progress_callback=self._on_train_progress,
+                )
+
+                for line in result["messages"]:
+                    self._safe_log(line)
+
+            if sto_models:
+                self._safe_log(f"▶ Start zapisu modelu STO: {', '.join(sto_models)}")
+                sto_pack_result = train_sto_models_flow(sto_models)
+                for line in sto_pack_result["messages"]:
+                    self._safe_log(line)
+
+            if ml_models and sto_models:
+                self._safe_log("✔ Zapisano razem modele ML i STO")
 
         except ValueError as e:
             self._safe_log(f"⚠ Błąd danych: {e}")
             self._safe_showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.train_worker", e)
-            self._safe_log(f"❌ Nieoczekiwany błąd. Szczegóły zapisano w: {log_path}")
-            self._safe_showerror("Błąd", "Wystąpił nieoczekiwany błąd podczas treningu modeli.")
+            self._safe_log(f"❌ Nieoczekiwany błąd.\nSzczegóły zapisano w: {log_path}")
+            self._safe_showerror(
+                "Błąd",
+                "Wystąpił nieoczekiwany błąd podczas uruchamiania modeli.",
+            )
 
     def solve_existing_models(self):
         model_path = filedialog.askopenfilename(
-            title="Wybierz wytrenowany model",
+            title="Wybierz zapisany model",
             initialdir=str(MODELS_DIR),
-            filetypes=[("Pickle", "*.pkl")]
+            filetypes=[("Pickle", "*.pkl")],
         )
         if not model_path:
             return
@@ -462,7 +651,7 @@ class MainPage(ctk.CTkFrame):
         data_path = filedialog.askopenfilename(
             title="Wybierz dane do rozwiązania",
             initialdir=str(DATA_DIR),
-            filetypes=[("CSV", "*.csv")]
+            filetypes=[("CSV", "*.csv")],
         )
         if not data_path:
             return
@@ -470,11 +659,24 @@ class MainPage(ctk.CTkFrame):
         threading.Thread(
             target=self._solve_existing_models_worker,
             args=(model_path, data_path),
-            daemon=True
+            daemon=True,
         ).start()
 
     def _solve_existing_models_worker(self, model_path, data_path):
         try:
+            pack = load_model_pack(model_path)
+            pack_kind = pack.get("pack_kind", "ml")
+
+            if pack_kind == "sto":
+                result = solve_sto_with_saved_model(model_path=model_path, data_path=data_path)
+
+                for line in result.get("messages", []):
+                    self._safe_log(line)
+
+                self._safe_render_sto_report(result["report"])
+                self._log_sto_results(result)
+                return
+
             result = solve_models_flow(model_path=model_path, data_path=data_path)
 
             for line in result["messages"]:
@@ -485,12 +687,17 @@ class MainPage(ctk.CTkFrame):
             self._safe_showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.solve_existing_models", e)
-            self._safe_log(f"❌ Nieoczekiwany błąd. Szczegóły zapisano w: {log_path}")
-            self._safe_showerror("Błąd", "Wystąpił nieoczekiwany błąd podczas rozwiązywania modeli.")
+            self._safe_log(f"❌ Nieoczekiwany błąd.\nSzczegóły zapisano w: {log_path}")
+            self._safe_showerror(
+                "Błąd",
+                "Wystąpił nieoczekiwany błąd podczas rozwiązywania modeli.",
+            )
 
     def run_sto_analysis(self):
-        selected = [name for name, var in self.sto_vars.items() if var.get()]
-        if not selected:
+        selected_models = self._ui_config()["selected_models"]
+        _, sto_models = split_selected_models(selected_models)
+
+        if not sto_models:
             messagebox.showinfo("Informacja", "Wybierz przynajmniej jeden model STO.")
             return
 
@@ -499,16 +706,17 @@ class MainPage(ctk.CTkFrame):
                 job_ids_text=self.sto_jobs_var.get(),
                 processing_text=self.sto_times_var.get(),
                 deadlines_text=self.sto_deadlines_var.get(),
-                selected_methods=selected,
+                selected_methods=sto_models,
             )
             self.render_sto_report(result["report"])
+            self._log_sto_results(result)
 
         except ValueError as e:
             messagebox.showerror("Błąd STO", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.run_sto_analysis", e)
-            self.log(f"❌ Nieoczekiwany błąd STO. Szczegóły zapisano w: {log_path}")
+            self.log(f"❌ Nieoczekiwany błąd STO.\nSzczegóły zapisano w: {log_path}")
             messagebox.showerror(
                 "Błąd STO",
-                "Wystąpił nieoczekiwany błąd podczas analizy STO."
+                "Wystąpił nieoczekiwany błąd podczas analizy STO.",
             )

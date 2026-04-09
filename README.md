@@ -73,14 +73,25 @@ TOOLS/
 ├── tests/
 │   └── core/
 │       ├── test_data_generation.py
+│       ├── test_data_generation_extended.py
 │       ├── test_data_io.py
 │       ├── test_dataset_ops.py
+│       ├── test_evaluation.py
 │       ├── test_features.py
+│       ├── test_features_extended.py
+│       ├── test_io_and_split_extended.py
+│       ├── test_model_pack_flows.py
 │       ├── test_models.py
+│       ├── test_models_extended.py
 │       ├── test_scheduling.py
+│       ├── test_scheduling_extended.py
 │       ├── test_services_extra.py
+│       ├── test_services_flows.py
+│       ├── test_services_extended.py
 │       ├── test_sto_models.py
-│       └── test_visualization_service.py
+│       ├── test_sto_models_extended.py
+│       ├── test_visualization_service.py
+│       └── test_visualization_service_extended.py
 ├── CHANGELOG.md
 ├── README.md
 ├── pyproject.toml
