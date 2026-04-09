@@ -1,5 +1,63 @@
 # CHANGELOG
 
+## [0.3.0] - 2026-04-09
+
+### Added
+
+* Dodano rozszerzone testy jednostkowe dla warstwy `core`, obejmujące m.in.:
+  * przepływy usługowe w `core/services.py`,
+  * walidację konfiguracji generowania danych,
+  * zapis i odczyt paczek modeli,
+  * dodatkowe przypadki brzegowe dla `features`, `models`, `data_generation`, `scheduling`, `visualization_service` i `sto_models`.
+* Dodano obsługę zapisywania konfiguracji modeli STO jako osobnych paczek modeli, analogicznie do modeli ML.
+* Dodano możliwość późniejszego rozwiązywania danych z pliku CSV na podstawie wcześniej zapisanego modelu STO.
+* Dodano generowanie osobnych plików wynikowych dla każdego uruchomionego modelu STO.
+* Dodano zapis najlepszego wyniku STO do osobnego pliku wynikowego.
+* Dodano kolumny wynikowe STO do plików CSV, w tym:
+  * `sto_model`,
+  * `sto_order`,
+  * `sto_start`,
+  * `sto_end`,
+  * `sto_lateness`,
+  * `sto_tardiness_positive`,
+  * `sto_cumulative`,
+  * `sto_total_for_model`.
+* Dodano czytelniejsze logowanie przebiegu analiz STO oraz informacji o zapisanych plikach wynikowych.
+* Dodano rozróżnienie paczek modeli według typu (`ml` / `sto`), aby zachować spójny workflow rozwiązywania.
+
+### Changed
+
+* Ujednolicono workflow pracy z modelami STO tak, aby działał podobnie do modeli ML:
+  * najpierw zapis modelu,
+  * później wybór modelu,
+  * następnie wybór danych wejściowych,
+  * na końcu zapis wyniku.
+* Zmieniono nazewnictwo plików wynikowych tak, aby najpierw wskazywały model, potem dane źródłowe i datę zapisu, np.:
+  * `wynik_priority_genetic_nazwa_danych_YYYYMMDD_HHMMSS.csv`,
+  * `wynik_priority_best_genetic_nazwa_danych_YYYYMMDD_HHMMSS.csv`.
+* Rozszerzono `core/services.py`, aby rozdzielał logikę modeli ML i STO w bardziej jawny i przewidywalny sposób.
+* Rozbudowano logikę raportowania STO, aby lepiej pokazywać ranking modeli, szczegóły kolejności oraz wynik najlepszego rozwiązania.
+* Zmieniono zachowanie GUI w `main_page.py`, aby zapis i późniejsze użycie modeli STO było bardziej intuicyjne.
+* Rozszerzono obsługę postępu dla treningu modeli ML, tak aby użytkownik widział bardziej szczegółowy przebieg wykonywania operacji.
+
+### Fixed
+
+* Naprawiono niespójność pomiędzy logiką rozwiązywania modeli ML i STO.
+* Naprawiono sytuację, w której wyniki harmonogramowania mogły pojawiać się mimo braku wybranego modelu `Schedule`.
+* Poprawiono warunki zapisu wyników tak, aby użytkownik otrzymywał pliki jednoznacznie powiązane z użytym modelem.
+* Poprawiono obsługę walidacji danych wejściowych przy rozwiązywaniu danych na podstawie zapisanych modeli STO.
+* Poprawiono testy jednostkowe po zmianach w strukturze raportów STO i sposobie generowania wyników.
+* Poprawiono zgodność testów z aktualną logiką `services.py`, w tym z dynamicznym budowaniem nazw plików wynikowych.
+
+### Improved
+
+* Zwiększono spójność architektury pomiędzy modelami ML i heurystykami STO.
+* Ułatwiono użytkownikowi identyfikację, który plik wynikowy odpowiada konkretnemu modelowi i konkretnemu zestawowi danych.
+* Poprawiono czytelność logów operacyjnych w GUI.
+* Zwiększono pokrycie testowe kluczowych ścieżek działania aplikacji.
+* Ułatwiono dalszy rozwój mechanizmu wersjonowania i publikacji wydań.
+
+
 ## [0.2.2] - 2026-04-02
 
 ### Fixed
