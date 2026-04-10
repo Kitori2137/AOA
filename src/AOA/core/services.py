@@ -1,5 +1,9 @@
+from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
+
+import pandas as pd
 
 from AOA.config import DATA_DIR, MODELS_DIR
 from AOA.core.data_generation import generate_production_data
@@ -29,18 +33,26 @@ ML_MODEL_NAMES = {"Quality", "Delay", "Schedule"}
 STO_MODEL_NAMES = {"MT", "MO", "MZO", "GENETIC"}
 
 
-def _parse_positive_int(value: str, field_name: str) -> int:
-    parsed = int(value)
-    if parsed <= 0:
+def _parse_positive_int(value, field_name: str) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Pole '{field_name}' musi być liczbą całkowitą.")
+
+    if number <= 0:
         raise ValueError(POSITIVE_VALUES_MESSAGE)
-    return parsed
+    return number
 
 
-def _parse_positive_float(value: str, field_name: str) -> float:
-    parsed = float(value)
-    if parsed <= 0:
+def _parse_positive_float(value, field_name: str) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        raise ValueError(f"Pole '{field_name}' musi być liczbą.")
+
+    if number <= 0:
         raise ValueError(POSITIVE_VALUES_MESSAGE)
-    return parsed
+    return number
 
 
 def split_selected_models(selected_models: list[str]) -> tuple[list[str], list[str]]:
@@ -99,10 +111,13 @@ def build_main_page_summary(config: dict) -> str:
 
     selected_ksztalty = config.get("selected_ksztalty", [])
     selected_materialy = config.get("selected_materialy", [])
+    backend = config.get("backend", "classic")
+    backend_label = "TabPFN (eksperymentalny)" if backend == "tabpfn" else "Klasyczny"
 
     return (
         "AKTUALNA KONFIGURACJA\n"
         "======================\n\n"
+        f"Backend ML: {backend_label}\n\n"
         f"Modele ML:\n - {', '.join(ml_models) if ml_models else 'brak'}\n\n"
         f"Modele STO:\n - {', '.join(sto_models) if sto_models else 'brak'}\n\n"
         f"Liczba rekordów: {config.get('n', '')}\n"
@@ -117,13 +132,18 @@ def build_main_page_summary(config: dict) -> str:
 
 
 def build_main_page_status(df_train=None, df_test=None) -> str:
-    if df_train is None:
+    if df_train is None and df_test is None:
         return "Brak danych treningowych"
 
+    train_count = len(df_train) if df_train is not None else 0
+    test_count = len(df_test) if df_test is not None else 0
+    total_count = train_count + test_count
+
     return (
-        "Dane treningowe gotowe\n"
-        f"Train: {len(df_train)} rekordów\n"
-        f"Test: {len(df_test) if df_test is not None else 0} rekordów"
+        "Aktualnie załadowane dane\n"
+        f"Łącznie: {total_count} rekordów\n"
+        f"Train: {train_count} rekordów\n"
+        f"Test: {test_count} rekordów"
     )
 
 
@@ -164,10 +184,10 @@ def generate_and_store_datasets(
     seed=42,
     ksztalty=None,
     materialy=None,
-    production_time_range=(1.0, 48.0),
-    deadline_buffer_range=(1.0, 72.0),
+    production_time_range=(1, 48),
+    deadline_buffer_range=(1, 72),
 ):
-    df_full, df_train, df_test = generate_production_data(
+    full_df, train_df, test_df = generate_production_data(
         n=n,
         n_machines=n_machines,
         test_size=test_size,
@@ -179,28 +199,25 @@ def generate_and_store_datasets(
     )
 
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    full_path = DATA_DIR / f"production_data_{stamp}.csv"
-    train_path = DATA_DIR / f"train_data_{stamp}.csv"
-    test_path = DATA_DIR / f"test_data_{stamp}.csv"
+    full_path = DATA_DIR / f"dane_{stamp}.csv"
+    train_path = DATA_DIR / f"train_{stamp}.csv"
+    test_path = DATA_DIR / f"test_{stamp}.csv"
 
-    save_csv(df_full, full_path)
-    save_csv(df_train, train_path)
-    save_csv(df_test, test_path)
+    save_csv(full_df, full_path)
+    save_csv(train_df, train_path)
+    save_csv(test_df, test_path)
 
     return {
-        "full_df": df_full,
-        "train_df": df_train,
-        "test_df": df_test,
+        "full_df": full_df,
+        "train_df": train_df,
+        "test_df": test_df,
         "full_path": full_path,
         "train_path": train_path,
         "test_path": test_path,
         "messages": [
-            "✔ Dane wygenerowane i podzielone na train/test",
-            f"Train: {len(df_train)} rekordów",
-            f"Test: {len(df_test)} rekordów",
-            f" Zapisano pełny zbiór: {full_path}",
-            f" Zapisano train: {train_path}",
-            f" Zapisano test: {test_path}",
+            f"✔ Wygenerowano pełny zbiór: {full_path}",
+            f"✔ Wygenerowano train: {train_path}",
+            f"✔ Wygenerowano test: {test_path}",
         ],
     }
 
@@ -223,32 +240,75 @@ def load_and_prepare_visual_file(path, train_ratio=0.8):
     }
 
 
-def prepare_results_analysis(df, selected_cols, transformation, target, mode):
+def prepare_results_analysis(
+    df,
+    selected_cols=None,
+    transformation=None,
+    target=None,
+    mode=None,
+):
     if df is None or df.empty:
         raise ValueError("Brak danych do analizy")
-    if not selected_cols:
-        raise ValueError("Nie wybrano kolumn do analizy")
 
-    df_to_show = df[selected_cols].copy()
-    df_to_show = fill_missing_values(df_to_show)
-    df_to_show = transform_numeric_columns(df_to_show, transformation)
+    if selected_cols is not None or target is not None or mode is not None:
+        if not selected_cols:
+            raise ValueError("Nie wybrano kolumn do analizy")
 
-    if target not in df_to_show.columns:
-        raise ValueError("Nieprawidłowy target")
+        df_to_show = df[selected_cols].copy()
+        df_to_show = fill_missing_values(df_to_show)
+        df_to_show = transform_numeric_columns(df_to_show, transformation or "Surowe")
 
-    if mode == "regresja":
-        metrics = calculate_regression_metrics(df_to_show, target)
-    elif mode == "klasyfikacja":
-        metrics = calculate_classification_metrics(df_to_show, target)
-    else:
-        raise ValueError("Nieznany tryb analizy")
+        if target not in df_to_show.columns:
+            raise ValueError("Nieprawidłowy target")
 
-    df_to_show = append_metrics_row(df_to_show, metrics)
+        if mode == "regresja":
+            metrics = calculate_regression_metrics(df_to_show, target)
+        elif mode == "klasyfikacja":
+            metrics = calculate_classification_metrics(df_to_show, target)
+        else:
+            raise ValueError("Nieznany tryb analizy")
 
-    return {
-        "df": df_to_show,
-        "text": df_to_show.to_string(index=True),
-    }
+        df_to_show = append_metrics_row(df_to_show, metrics)
+        return {
+            "df": df_to_show,
+            "text": df_to_show.to_string(index=True),
+        }
+
+    metrics_rows = []
+
+    if "pred_quality" in df.columns and "odpad" in df.columns:
+        regression_quality = {
+            "model": "Quality",
+            "metrics": calculate_regression_metrics(
+                df[["pred_quality", "odpad"]].rename(columns={"pred_quality": "feature"}),
+                "odpad",
+            ),
+        }
+        metrics_rows.append(regression_quality)
+
+    if "pred_delay" in df.columns and "lateness_h_sim" in df.columns:
+        regression_delay = {
+            "model": "Delay",
+            "metrics": calculate_regression_metrics(
+                df[["pred_delay", "lateness_h_sim"]].rename(columns={"pred_delay": "feature"}),
+                "lateness_h_sim",
+            ),
+        }
+        metrics_rows.append(regression_delay)
+
+    if "recommended_machine" in df.columns and "machine_id" in df.columns:
+        classification = {
+            "model": "Schedule",
+            "metrics": calculate_classification_metrics(
+                df[["recommended_machine", "machine_id"]].rename(
+                    columns={"recommended_machine": "feature"}
+                ),
+                "machine_id",
+            ),
+        }
+        metrics_rows.append(classification)
+
+    return metrics_rows
 
 
 def load_training_data(path, train_ratio=0.8):
@@ -267,16 +327,21 @@ def load_training_data(path, train_ratio=0.8):
     }
 
 
-def sanitize_filename(name: str) -> str:
-    invalid = ['<', '>', ':', '"', "/", "\\", "|", "?", "*", " "]
-    for ch in invalid:
-        name = name.replace(ch, "_")
-    return name
+def sanitize_filename(text: str) -> str:
+    text = str(text).strip().replace(" ", "_")
+    keep = []
+    for char in text:
+        if char.isalnum() or char in {"_", "-", "."}:
+            keep.append(char)
+        else:
+            keep.append("_")
+    return "".join(keep)
 
 
-def build_model_filename(selected_models, metadata):
+def build_model_filename(selected_models, metadata, backend="classic"):
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     models_part = "-".join(sorted([m.lower() for m in selected_models])) or "unknown"
+    backend_part = sanitize_filename(backend.lower()) if backend else "classic"
     n_part = f"{metadata.get('n', 'x')}r"
     mach_part = f"{metadata.get('n_machines', 'x')}m"
 
@@ -287,7 +352,7 @@ def build_model_filename(selected_models, metadata):
     mat_part = "-".join(materialy) if materialy else "allmaterials"
 
     filename = (
-        f"model_{models_part}_{n_part}_{mach_part}_{kszt_part}_{mat_part}_{stamp}.pkl"
+        f"model_{backend_part}_{models_part}_{n_part}_{mach_part}_{kszt_part}_{mat_part}_{stamp}.pkl"
     )
     filename = sanitize_filename(filename)
     return MODELS_DIR / filename
@@ -307,7 +372,13 @@ def build_result_filename(model_name: str, source_name: str, suffix: str = ".csv
     return DATA_DIR / f"wynik_priority_{model_part}_{source_part}_{stamp}{suffix}"
 
 
-def train_models_flow(df_train, selected_models, metadata=None, progress_callback=None):
+def train_models_flow(
+    df_train,
+    selected_models,
+    metadata=None,
+    progress_callback=None,
+    backend="classic",
+):
     if df_train is None or df_train.empty:
         raise ValueError("Brak danych treningowych.")
     if not selected_models:
@@ -317,18 +388,27 @@ def train_models_flow(df_train, selected_models, metadata=None, progress_callbac
         df_train=df_train,
         selected_models=selected_models,
         progress_callback=progress_callback,
+        backend=backend,
     )
     pack["pack_kind"] = "ml"
 
-    model_path = build_model_filename(selected_models, metadata or {})
+    metadata = metadata or {}
+
+    try:
+        model_path = build_model_filename(selected_models, metadata, backend=backend)
+    except TypeError:
+        model_path = build_model_filename(selected_models, metadata)
+
     save_model_pack(pack, model_path)
+
+    backend_label = "TabPFN" if backend == "tabpfn" else "Classic"
 
     return {
         "model_pack": pack,
         "model_path": model_path,
         "messages": [
-            f" Modele zapisane do: {model_path}",
-            "✔ Trening zakończony",
+            f"✔ Modele zapisane do: {model_path}",
+            f"✔ Trening zakończony | backend: {backend_label}",
         ],
     }
 
@@ -349,9 +429,8 @@ def train_sto_models_flow(selected_methods):
         "model_pack": pack,
         "model_path": model_path,
         "messages": [
-            f" Model STO zapisany do: {model_path}",
-            f" Wybrane metody STO: {', '.join(selected_methods)}",
-            "✔ Zapis konfiguracji STO zakończony",
+            f"✔ Modele STO zapisane do: {model_path}",
+            "✔ Zapis modelu STO zakończony",
         ],
     }
 
@@ -362,45 +441,64 @@ def solve_models_flow(model_path, data_path):
     if not data_path:
         raise ValueError("Nie wybrano pliku danych.")
 
-    pack = load_model_pack(model_path)
-    df_sol = load_csv(data_path)
+    model_pack = load_model_pack(model_path)
+    df = load_csv(data_path)
 
-    if df_sol is None or df_sol.empty:
+    if df.empty:
         raise ValueError("Plik danych jest pusty.")
 
-    pack_kind = pack.get("pack_kind", "ml")
-    if pack_kind != "ml":
-        raise ValueError("Wybrany plik nie jest paczką modeli ML.")
+    X, *_ = prepare_features(df)
 
-    X, _, _, _ = prepare_features(df_sol, pack.get("scaler"))
+    quality_model = model_pack.get("quality")
+    delay_model = model_pack.get("delay")
+    schedule_model = model_pack.get("schedule")
+    scaler = model_pack.get("scaler")
+    backend = model_pack.get("backend", "classic")
 
-    if pack.get("quality") is not None:
-        df_sol["pred_quality"] = pack["quality"].predict(X)
+    X_for_pred = X
 
-    if pack.get("delay") is not None:
-        df_sol["pred_delay"] = pack["delay"].predict(X)
+    if backend != "tabpfn" and scaler is not None:
+        try:
+            transformed = scaler.transform(X)
+            if hasattr(X, "columns"):
+                X_for_pred = pd.DataFrame(
+                    transformed,
+                    columns=X.columns,
+                    index=X.index,
+                )
+            else:
+                X_for_pred = transformed
+        except Exception:
+            X_for_pred = X
 
-    if "pred_quality" in df_sol.columns and "pred_delay" in df_sol.columns:
-        df_sol["priority"] = df_sol["pred_quality"] / (df_sol["pred_delay"] + 1e-6)
-        df_sol = df_sol.sort_values("priority", ascending=False)
+    result_df = df.copy()
 
-    selected_models = pack.get("selected_models", []) or []
-    if "Schedule" in selected_models and pack.get("schedule") is not None:
-        df_sol = simulate_schedule(df_sol)
+    if quality_model is not None:
+        result_df["pred_quality"] = quality_model.predict(X_for_pred)
 
-    model_tag = "-".join([m.lower() for m in selected_models]) if selected_models else "ml"
-    source_name = Path(str(data_path)).stem
-    result_path = build_result_filename(model_tag, source_name)
-    save_csv(df_sol, result_path)
+    if delay_model is not None:
+        result_df["pred_delay"] = delay_model.predict(X_for_pred)
+
+    if quality_model is not None and delay_model is not None:
+        result_df["priority"] = (
+            result_df["pred_quality"] * 0.7
+            + (1.0 / (1.0 + result_df["pred_delay"])) * 0.3
+        )
+        result_df = result_df.sort_values("priority", ascending=False).reset_index(drop=True)
+
+    if schedule_model is not None:
+        result_df["recommended_machine"] = simulate_schedule(schedule_model, result_df)
+
+    model_name = Path(model_path).stem
+    source_name = Path(data_path).stem
+    result_path = build_result_filename(model_name, source_name, suffix=".csv")
+    save_csv(result_df, result_path)
 
     return {
-        "df": df_sol,
+        "df": result_df,
         "result_path": result_path,
         "messages": [
-            " Rozwiązanie gotowe",
-            "TOP 10 produktów:",
-            df_sol.head(10).to_string(),
-            f" Zapisano: {result_path}",
+            f"✔ Rozwiązanie gotowe: {result_path}",
         ],
     }
 
@@ -408,14 +506,43 @@ def solve_models_flow(model_path, data_path):
 def analyze_sto_models(job_ids_text, processing_text, deadlines_text, selected_methods):
     jobs = parse_jobs(job_ids_text, processing_text, deadlines_text)
     results = run_selected_sto_models(jobs, selected_methods)
-    report = build_sto_report(jobs, results)
-    best_result = results[0] if results else None
+    report = build_sto_report(results)
+
+    saved_paths = []
+    best_result = None
+    best_path = None
+
+    if results:
+        best_result = min(results, key=lambda x: x["sto"])
+        best_jobs_df = apply_sto_result_to_dataframe(jobs, best_result)
+
+        for result in results:
+            result_df = apply_sto_result_to_dataframe(jobs, result)
+            out_path = build_result_filename(
+                f"sto_{result['method']}",
+                "manual",
+                suffix=".csv",
+            )
+            save_csv(result_df, out_path)
+            saved_paths.append(
+                {
+                    "method": result["method"],
+                    "sto": result["sto"],
+                    "path": out_path,
+                }
+            )
+
+        best_path = build_result_filename("sto_best", "manual", suffix=".csv")
+        save_csv(best_jobs_df, best_path)
 
     return {
         "jobs": jobs,
         "results": results,
         "report": report,
+        "saved_paths": saved_paths,
         "best_result": best_result,
+        "best_path": best_path,
+        "messages": ["✔ Analiza STO zakończona"],
     }
 
 
@@ -423,88 +550,57 @@ def solve_sto_with_saved_model(model_path, data_path):
     if not model_path:
         raise ValueError("Nie wybrano pliku modelu STO.")
     if not data_path:
-        raise ValueError("Nie wybrano pliku danych.")
+        raise ValueError("Nie wybrano pliku danych STO.")
 
-    pack = load_model_pack(model_path)
-    pack_kind = pack.get("pack_kind")
+    model_pack = load_model_pack(model_path)
+    if model_pack.get("pack_kind") != "sto":
+        raise ValueError("Wybrany plik nie jest modelem STO.")
 
-    if pack_kind != "sto":
-        raise ValueError("Wybrany plik nie jest zapisanym modelem STO.")
+    df = load_csv(data_path)
+    if df.empty:
+        raise ValueError("Plik danych jest pusty.")
 
-    selected_methods = pack.get("selected_methods", [])
+    jobs = dataframe_to_jobs(df)
+    selected_methods = model_pack.get("selected_methods", [])
     if not selected_methods:
-        raise ValueError("Zapisany model STO nie zawiera metod.")
-
-    df_source = load_csv(data_path)
-    if df_source is None or df_source.empty:
-        raise ValueError("Brak danych do rozwiązania STO.")
-
-    df_source = df_source.copy().reset_index(drop=True)
-    job_id_col = "sto_job_id"
-    if job_id_col not in df_source.columns:
-        df_source[job_id_col] = [f"JOB_{i + 1}" for i in range(len(df_source))]
-
-    jobs = dataframe_to_jobs(
-        df_source,
-        job_id_col=job_id_col,
-        processing_col="czas_produkcji_h",
-        deadline_col="termin_h",
-        round_to_int=True,
-    )
+        raise ValueError("Zapisany model STO nie zawiera żadnych metod.")
 
     results = run_selected_sto_models(jobs, selected_methods)
-    report = build_sto_report(jobs, results)
+    report = build_sto_report(results)
 
-    source_name = Path(str(data_path)).stem
     saved_paths = []
-    solved_frames = []
-
-    for result in results:
-        solved_df = apply_sto_result_to_dataframe(
-            df=df_source,
-            result=result,
-            job_id_col=job_id_col,
-        )
-        result_path = build_result_filename(result["method"], source_name)
-        save_csv(solved_df, result_path)
-
-        saved_paths.append(
-            {
-                "method": result["method"],
-                "path": result_path,
-                "sto": result["sto"],
-            }
-        )
-        solved_frames.append(
-            {
-                "method": result["method"],
-                "df": solved_df,
-                "sto": result["sto"],
-            }
-        )
-
-    best_result = results[0] if results else None
+    best_result = None
     best_path = None
 
-    if best_result is not None:
-        best_df = apply_sto_result_to_dataframe(
-            df=df_source,
-            result=best_result,
-            job_id_col=job_id_col,
-        )
-        best_path = build_result_filename(f"best_{best_result['method']}", source_name)
-        save_csv(best_df, best_path)
+    if results:
+        best_result = min(results, key=lambda x: x["sto"])
+        best_jobs_df = apply_sto_result_to_dataframe(jobs, best_result)
+
+        for result in results:
+            result_df = apply_sto_result_to_dataframe(jobs, result)
+            out_path = build_result_filename(
+                f"sto_{result['method']}",
+                Path(data_path).stem,
+                suffix=".csv",
+            )
+            save_csv(result_df, out_path)
+            saved_paths.append(
+                {
+                    "method": result["method"],
+                    "sto": result["sto"],
+                    "path": out_path,
+                }
+            )
+
+        best_path = build_result_filename("sto_best", Path(data_path).stem, suffix=".csv")
+        save_csv(best_jobs_df, best_path)
 
     return {
         "jobs": jobs,
         "results": results,
         "report": report,
-        "best_result": best_result,
         "saved_paths": saved_paths,
+        "best_result": best_result,
         "best_path": best_path,
-        "solved_frames": solved_frames,
-        "messages": [
-            f"✔ Rozwiązano STO dla pliku: {data_path}",
-            f"✔ Użyto zapisanych metod: {', '.join(selected_methods)}",
-        ],
+        "messages": ["✔ Rozwiązanie STO zakończone"],
     }

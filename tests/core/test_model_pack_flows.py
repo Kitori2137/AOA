@@ -36,23 +36,34 @@ def test_save_and_load_model_pack_roundtrip_preserves_structure(tmp_path):
         "schedule": None,
         "scaler": {"type": "mock-scaler"},
         "selected_models": ["Quality", "Delay"],
+        "backend": "classic",
     }
-    path = tmp_path / "model_pack.pkl"
 
+    path = tmp_path / "model_pack.pkl"
     save_model_pack(pack, path)
     loaded = load_model_pack(path)
 
     assert path.exists()
-    assert set(loaded.keys()) == {"quality", "delay", "schedule", "scaler", "selected_models"}
+    assert set(loaded.keys()) == {
+        "quality",
+        "delay",
+        "schedule",
+        "scaler",
+        "selected_models",
+        "backend",
+    }
     assert loaded["quality"].name == "quality"
     assert loaded["delay"].name == "delay"
     assert loaded["schedule"] is None
     assert loaded["scaler"] == {"type": "mock-scaler"}
     assert loaded["selected_models"] == ["Quality", "Delay"]
+    assert loaded["backend"] == "classic"
 
 
 def test_train_models_flow_saves_pack_with_generated_filename(
-    tmp_path, monkeypatch, training_df
+    tmp_path,
+    monkeypatch,
+    training_df,
 ):
     expected_path = tmp_path / "trained_pack.pkl"
     fake_pack = {
@@ -61,23 +72,32 @@ def test_train_models_flow_saves_pack_with_generated_filename(
         "schedule": None,
         "scaler": {"type": "mock-scaler"},
         "selected_models": ["Quality"],
+        "backend": "tabpfn",
     }
 
-    monkeypatch.setattr(services, "build_model_filename", lambda *_args, **_kwargs: expected_path)
+    monkeypatch.setattr(
+        services,
+        "build_model_filename",
+        lambda *_args, **_kwargs: expected_path,
+    )
     monkeypatch.setattr(services, "train_selected_models", lambda **_kwargs: fake_pack)
 
     result = services.train_models_flow(
         training_df,
         selected_models=["Quality"],
         metadata={"n": 4, "n_machines": 1},
+        backend="tabpfn",
     )
 
     assert result["model_path"] == expected_path
     assert expected_path.exists()
+
     loaded = load_model_pack(expected_path)
     assert loaded["quality"].name == "quality"
     assert loaded["selected_models"] == ["Quality"]
+    assert loaded["backend"] == "tabpfn"
     assert any("Trening zakończony" in message for message in result["messages"])
+    assert any("backend: TabPFN" in message for message in result["messages"])
 
 
 @pytest.mark.parametrize(

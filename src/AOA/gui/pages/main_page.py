@@ -1,5 +1,4 @@
 import threading
-from pathlib import Path
 
 import customtkinter as ctk
 from tkinter import filedialog, messagebox
@@ -11,8 +10,8 @@ from AOA.core.services import (
     build_main_page_status,
     build_main_page_summary,
     generate_and_store_datasets_from_config,
-    load_training_data,
     load_model_pack,
+    load_training_data,
     solve_models_flow,
     solve_sto_with_saved_model,
     split_selected_models,
@@ -64,6 +63,8 @@ class MainPage(ctk.CTkFrame):
         self.prod_max_var = ctk.StringVar(value="48")
         self.deadline_min_var = ctk.StringVar(value="1")
         self.deadline_max_var = ctk.StringVar(value="72")
+
+        self.backend_var = ctk.StringVar(value="classic")
 
         self.sto_jobs_var = ctk.StringVar(value="Z1,Z2,Z3")
         self.sto_times_var = ctk.StringVar(value="10,20,100")
@@ -145,6 +146,27 @@ class MainPage(ctk.CTkFrame):
                 variable=self.model_vars[name],
                 command=self.render_summary,
             ).pack(anchor="w", padx=10, pady=4)
+
+        ctk.CTkLabel(
+            ml_frame,
+            text="Backend ML",
+            font=("Arial", 14, "bold"),
+        ).pack(anchor="w", padx=10, pady=(10, 4))
+
+        self.backend_menu = ctk.CTkOptionMenu(
+            ml_frame,
+            values=["classic", "tabpfn"],
+            variable=self.backend_var,
+            command=lambda _value: self.render_summary(),
+        )
+        self.backend_menu.pack(anchor="w", padx=10, pady=(0, 4))
+
+        ctk.CTkLabel(
+            ml_frame,
+            text="classic = obecne modele | tabpfn = tryb eksperymentalny",
+            font=("Arial", 11),
+            justify="left",
+        ).pack(anchor="w", padx=10, pady=(0, 10))
 
         sto_frame = ctk.CTkFrame(frame)
         sto_frame.pack(fill="x", padx=10, pady=(0, 12))
@@ -373,12 +395,12 @@ class MainPage(ctk.CTkFrame):
         ).pack(anchor="w", padx=15, pady=(12, 8))
 
         hint = (
-            "ML działa jak wcześniej.\n\n"
             "STO działa teraz też dwustopniowo:\n"
             "1) zapisujesz model STO,\n"
             "2) później wybierasz zapisany model i dane.\n\n"
-            "Pliki wynikowe mają teraz nazwę:\n"
-            "wynik_priority_MODEL_DANE_DATA.csv"
+            "Pliki wynikowe zapisują się do katalogu data.\n\n"
+            "Dla TabPFN na CPU najlepiej testować mniejsze zbiory,\n"
+            "np. 300–1000 rekordów."
         )
 
         ctk.CTkLabel(
@@ -419,6 +441,7 @@ class MainPage(ctk.CTkFrame):
             "prod_max": self.prod_max_var.get(),
             "deadline_min": self.deadline_min_var.get(),
             "deadline_max": self.deadline_max_var.get(),
+            "backend": self.backend_var.get(),
         }
 
     def render_summary(self):
@@ -464,6 +487,14 @@ class MainPage(ctk.CTkFrame):
         self.logbox.insert("end", msg + "\n")
         self.logbox.see("end")
         self.logbox.configure(state="disabled")
+
+    def clear_loaded_data_state(self):
+        self.df_train = None
+        self.df_test = None
+        self.df_full = None
+        self.loaded_data_path = None
+        self.render_status()
+        self.render_preview()
 
     def _on_train_progress(self, model_name: str, percent: float, detail: str = ""):
         last_percent = self._last_progress_per_model.get(model_name, -1.0)
@@ -519,6 +550,11 @@ class MainPage(ctk.CTkFrame):
     def gen(self):
         try:
             cfg = self._ui_config()
+
+            self.clear_loaded_data_state()
+            self.log("ℹ Czyszczę poprzednie dane z pamięci...")
+            self.log("▶ Start generowania nowych danych...")
+
             result = generate_and_store_datasets_from_config(cfg)
 
             self.df_full = result["full_df"]
@@ -539,6 +575,7 @@ class MainPage(ctk.CTkFrame):
             self.render_preview()
 
         except ValueError as e:
+            self.log(f"⚠ Błąd danych: {e}")
             messagebox.showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.gen", e)
@@ -558,6 +595,9 @@ class MainPage(ctk.CTkFrame):
             return
 
         try:
+            self.clear_loaded_data_state()
+            self.log(f"▶ Wczytywanie danych z pliku: {path}")
+
             result = load_training_data(path=path, train_ratio=0.8)
 
             self.df_full = result["full_df"]
@@ -586,6 +626,7 @@ class MainPage(ctk.CTkFrame):
     def train(self):
         cfg = self._ui_config()
         selected_models = cfg["selected_models"]
+        backend = cfg["backend"]
         ml_models, sto_models = split_selected_models(selected_models)
 
         if not ml_models and not sto_models:
@@ -598,22 +639,26 @@ class MainPage(ctk.CTkFrame):
 
         threading.Thread(
             target=self.train_worker,
-            args=(ml_models, sto_models),
+            args=(ml_models, sto_models, backend),
             daemon=True,
         ).start()
 
-    def train_worker(self, ml_models, sto_models):
+    def train_worker(self, ml_models, sto_models, backend):
         try:
             self._last_progress_per_model = {}
 
             if ml_models:
-                self._safe_log(f"▶ Start treningu ML: {', '.join(ml_models)}")
+                backend_label = "TabPFN" if backend == "tabpfn" else "Classic"
+                self._safe_log(
+                    f"▶ Start treningu ML: {', '.join(ml_models)} | backend: {backend_label}"
+                )
 
                 result = train_models_flow(
                     df_train=self.df_train,
                     selected_models=ml_models,
                     metadata=self.last_generation_metadata,
                     progress_callback=self._on_train_progress,
+                    backend=backend,
                 )
 
                 for line in result["messages"]:
@@ -633,10 +678,11 @@ class MainPage(ctk.CTkFrame):
             self._safe_showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.train_worker", e)
-            self._safe_log(f"❌ Nieoczekiwany błąd.\nSzczegóły zapisano w: {log_path}")
+            self._safe_log(f"❌ Błąd: {type(e).__name__}: {e}")
+            self._safe_log(f"Szczegóły zapisano w: {log_path}")
             self._safe_showerror(
                 "Błąd",
-                "Wystąpił nieoczekiwany błąd podczas uruchamiania modeli.",
+                f"Wystąpił błąd podczas uruchamiania modeli:\n\n{type(e).__name__}: {e}",
             )
 
     def solve_existing_models(self):
@@ -667,6 +713,10 @@ class MainPage(ctk.CTkFrame):
             pack = load_model_pack(model_path)
             pack_kind = pack.get("pack_kind", "ml")
 
+            self._safe_log(f"▶ Wybrany model: {model_path}")
+            self._safe_log(f"▶ Wybrane dane: {data_path}")
+            self._safe_log(f"▶ Typ paczki: {pack_kind}")
+
             if pack_kind == "sto":
                 result = solve_sto_with_saved_model(model_path=model_path, data_path=data_path)
 
@@ -677,20 +727,26 @@ class MainPage(ctk.CTkFrame):
                 self._log_sto_results(result)
                 return
 
+            backend = pack.get("backend", "classic")
+            self._safe_log(f"▶ Backend modelu ML: {backend}")
+
             result = solve_models_flow(model_path=model_path, data_path=data_path)
 
             for line in result["messages"]:
                 self._safe_log(line)
+
+            self._safe_log(f"✔ Plik wynikowy zapisany tutaj: {result['result_path']}")
 
         except ValueError as e:
             self._safe_log(f"⚠ Błąd danych: {e}")
             self._safe_showerror("Błąd danych", str(e))
         except Exception as e:
             log_path = write_exception_log("main_page.solve_existing_models", e)
-            self._safe_log(f"❌ Nieoczekiwany błąd.\nSzczegóły zapisano w: {log_path}")
+            self._safe_log(f"❌ Błąd: {type(e).__name__}: {e}")
+            self._safe_log(f"Szczegóły zapisano w: {log_path}")
             self._safe_showerror(
                 "Błąd",
-                "Wystąpił nieoczekiwany błąd podczas rozwiązywania modeli.",
+                f"Wystąpił błąd podczas rozwiązywania modeli:\n\n{type(e).__name__}: {e}",
             )
 
     def run_sto_analysis(self):

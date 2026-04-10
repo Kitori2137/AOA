@@ -10,6 +10,7 @@ from sklearn.ensemble import (
 
 from AOA.core.features import prepare_features
 from AOA.core.scheduling import extract_schedule_features, generate_schedule_label
+from AOA.core.tabpfn_models import train_tabpfn_classifier, train_tabpfn_regressor
 
 
 def _emit_progress(progress_callback, model_name: str, percent: float, detail: str = ""):
@@ -48,7 +49,6 @@ def _train_quality_with_progress(X_train, yq, progress_callback=None):
     for i in range(1, total_estimators + 1):
         model.n_estimators = i
         model.fit(X_train, yq)
-
         percent = min(100.0, 0.5 + (i / total_estimators) * 99.0)
         _emit_progress(
             progress_callback,
@@ -75,7 +75,6 @@ def _train_delay_with_progress(X_train, yd, progress_callback=None):
     for i in range(1, total_estimators + 1):
         model.n_estimators = i
         model.fit(X_train, yd)
-
         percent = min(100.0, 0.5 + (i / total_estimators) * 99.0)
         _emit_progress(
             progress_callback,
@@ -88,7 +87,23 @@ def _train_delay_with_progress(X_train, yd, progress_callback=None):
     return model
 
 
-def train_schedule_model(df, n_samples=200, progress_callback=None):
+def _train_tabpfn_quality_with_progress(X_train, yq, progress_callback=None):
+    _emit_progress(progress_callback, "Quality", 0.0, "Start")
+    _emit_progress(progress_callback, "Quality", 5.0, "TabPFN | Inicjalizacja")
+    model = train_tabpfn_regressor(X_train, yq)
+    _emit_progress(progress_callback, "Quality", 100.0, "Zakończono | TabPFN")
+    return model
+
+
+def _train_tabpfn_delay_with_progress(X_train, yd, progress_callback=None):
+    _emit_progress(progress_callback, "Delay", 0.0, "Start")
+    _emit_progress(progress_callback, "Delay", 5.0, "TabPFN | Inicjalizacja")
+    model = train_tabpfn_regressor(X_train, yd)
+    _emit_progress(progress_callback, "Delay", 100.0, "Zakończono | TabPFN")
+    return model
+
+
+def train_schedule_model(df, n_samples=200, progress_callback=None, backend="classic"):
     _emit_progress(progress_callback, "Schedule", 0.0, "Start")
 
     X = []
@@ -99,7 +114,6 @@ def train_schedule_model(df, n_samples=200, progress_callback=None):
         batch = df.sample(n=batch_size, replace=False)
         X.append(extract_schedule_features(batch))
         y.append(generate_schedule_label(batch))
-
         percent = ((i + 1) / n_samples) * 100.0
         _emit_progress(
             progress_callback,
@@ -111,16 +125,22 @@ def train_schedule_model(df, n_samples=200, progress_callback=None):
     X = pd.DataFrame(X)
     y = pd.Series(y)
 
-    model = RandomForestClassifier(n_estimators=200, random_state=42)
-    model.fit(X, y)
+    if backend == "tabpfn":
+        model = train_tabpfn_classifier(X, y)
+    else:
+        model = RandomForestClassifier(n_estimators=200, random_state=42)
+        model.fit(X, y)
 
     _emit_progress(progress_callback, "Schedule", 100.0, "Zakończono")
     return model
 
 
-def train_selected_models(df_train, selected_models, progress_callback=None):
+def train_selected_models(df_train, selected_models, progress_callback=None, backend="classic"):
     if not selected_models:
         raise ValueError("Nie wybrano żadnego modelu do trenowania")
+
+    if backend not in {"classic", "tabpfn"}:
+        raise ValueError(f"Nieznany backend modeli: {backend}")
 
     X_train, yq, yd, scaler = prepare_features(df_train)
 
@@ -129,23 +149,38 @@ def train_selected_models(df_train, selected_models, progress_callback=None):
     schedule_model = None
 
     if "Quality" in selected_models:
-        quality_model = _train_quality_with_progress(
-            X_train,
-            yq,
-            progress_callback=progress_callback,
-        )
+        if backend == "tabpfn":
+            quality_model = _train_tabpfn_quality_with_progress(
+                X_train,
+                yq,
+                progress_callback=progress_callback,
+            )
+        else:
+            quality_model = _train_quality_with_progress(
+                X_train,
+                yq,
+                progress_callback=progress_callback,
+            )
 
     if "Delay" in selected_models:
-        delay_model = _train_delay_with_progress(
-            X_train,
-            yd,
-            progress_callback=progress_callback,
-        )
+        if backend == "tabpfn":
+            delay_model = _train_tabpfn_delay_with_progress(
+                X_train,
+                yd,
+                progress_callback=progress_callback,
+            )
+        else:
+            delay_model = _train_delay_with_progress(
+                X_train,
+                yd,
+                progress_callback=progress_callback,
+            )
 
     if "Schedule" in selected_models:
         schedule_model = train_schedule_model(
             df_train,
             progress_callback=progress_callback,
+            backend=backend,
         )
 
     return {
@@ -154,6 +189,7 @@ def train_selected_models(df_train, selected_models, progress_callback=None):
         "schedule": schedule_model,
         "scaler": scaler,
         "selected_models": selected_models,
+        "backend": backend,
     }
 
 

@@ -1,5 +1,117 @@
 # CHANGELOG
 
+## [0.4.0] - 2026-04-10
+
+### Added
+
+* Dodano eksperymentalny backend `TabPFN` dla modeli ML.
+* Dodano nowy moduł `core/tabpfn_models.py`, odpowiedzialny za izolację integracji z `TabPFN`.
+* Dodano obsługę backendów modeli ML:
+  * `classic`,
+  * `tabpfn`.
+* Dodano możliwość wyboru backendu ML bezpośrednio z poziomu GUI.
+* Dodano automatyczne zapisywanie informacji o backendzie w paczce modelu.
+* Dodano obsługę modeli `TabPFN` w przepływie trenowania i rozwiązywania danych.
+* Dodano obsługę limitu CPU dla `TabPFN`, w tym możliwość pracy na większych zbiorach danych po ustawieniu odpowiednich parametrów środowiskowych.
+* Dodano nowy interfejs terminalowy `CLI` w pliku `src/AOA/cli.py`.
+* Dodano komendy CLI do:
+  * generowania danych,
+  * trenowania modeli,
+  * rozwiązywania zapisanym modelem,
+  * uruchamiania analiz STO,
+  * zapisu modeli STO,
+  * rozwiązywania zapisanym modelem STO,
+  * podglądu danych,
+  * wyświetlania podsumowania konfiguracji,
+  * wyświetlania statusu danych,
+  * wykonywania pełnego workflow,
+  * pracy w trybie interaktywnym.
+* Dodano rozbudowaną pomoc `--help` dla CLI wraz z opisami komend i przykładami użycia.
+* Dodano testy dla nowej warstwy `cli`, obejmujące:
+  * parser i `main`,
+  * komendy podstawowe,
+  * workflow,
+  * tryb interaktywny.
+* Dodano testy dla integracji `TabPFN`.
+* Dodano katalog `logs` do zapisu logów błędów.
+* Dodano lub włączono użycie narzędzia `error_utils.py` do lepszego raportowania błędów.
+* Dodano logowanie ścieżek plików wejściowych, modeli i wyników podczas rozwiązywania danych w GUI.
+* Dodano czyszczenie poprzedniego stanu danych w GUI przed generowaniem lub wczytywaniem nowego zestawu.
+
+### Changed
+
+* Rozszerzono `core/models.py`, aby obsługiwał wiele backendów modeli przy zachowaniu zgodności z dotychczasowym workflow.
+* Rozszerzono `core/services.py`, aby:
+  * obsługiwał backend `tabpfn`,
+  * zachowywał kompatybilność z dotychczasowymi testami,
+  * lepiej rozdzielał logikę treningu, rozwiązywania i analizy wyników.
+* Zmieniono logikę `solve_models_flow`, aby poprawnie obsługiwała modele `TabPFN` z zachowaniem nazw cech.
+* Zmieniono sposób przygotowania danych do predykcji tak, aby uniknąć ostrzeżeń dotyczących braku nazw kolumn przy `TabPFN`.
+* Rozbudowano `main_page.py`, aby:
+  * obsługiwał wybór backendu ML,
+  * czytelniej logował przebieg operacji,
+  * lepiej raportował błędy,
+  * poprawnie pokazywał ścieżki zapisanych wyników,
+  * czyścił stan danych przed kolejnymi operacjami.
+* Ujednolicono komunikaty statusu danych tak, aby lepiej odzwierciedlały aktualnie załadowany zbiór.
+* Zmieniono sposób prezentacji logów w GUI, aby użytkownik widział dokładniej:
+  * wybrany model,
+  * wybrane dane,
+  * typ paczki modelu,
+  * backend modelu,
+  * miejsce zapisu pliku wynikowego.
+* Rozszerzono `pyproject.toml` o:
+  * opcjonalne zależności eksperymentalne,
+  * wpis skryptu `aoa-cli`.
+* Zaktualizowano strukturę repozytorium o nowe moduły, testy i katalog logów.
+
+### Fixed
+
+* Naprawiono problem z doborem wersji `tabpfn` w konfiguracji zależności.
+* Naprawiono problemy zgodności testów z nową logiką `services.py`.
+* Naprawiono problem z nieprawidłowym argumentem `random_seed` przy generowaniu danych.
+* Naprawiono logikę wyliczania i sortowania `priority`, aby była zgodna z oczekiwanym zachowaniem.
+* Naprawiono problem z ostrzeżeniem `X does not have valid feature names` podczas predykcji modeli `TabPFN`.
+* Naprawiono problem z rozjazdem pomiędzy konfiguracją GUI a stanem aktualnie załadowanych danych.
+* Naprawiono sytuacje, w których GUI pokazywało stare dane po zmianie konfiguracji.
+* Naprawiono zgodność testów CLI na różnych systemach operacyjnych, w tym różnice separatorów ścieżek Windows/Linux.
+* Naprawiono komunikaty błędów tak, aby pokazywały realny wyjątek zamiast ogólnego komunikatu o nieoczekiwanym błędzie.
+* Naprawiono kompatybilność funkcji pomocniczych z wcześniejszymi testami jednostkowymi.
+* Naprawiono obsługę modeli zapisywanych z różnymi typami paczek (`ml`, `sto`) w przepływach GUI i CLI.
+
+### Improved
+
+* Zwiększono elastyczność architektury przez dodanie drugiego pełnego interfejsu aplikacji obok GUI.
+* Zwiększono spójność pomiędzy GUI, CLI i warstwą `core`.
+* Ułatwiono uruchamianie pełnych przepływów pracy bez interfejsu graficznego.
+* Poprawiono czytelność logów i diagnostyki błędów.
+* Zwiększono pokrycie testowe projektu o warstwę CLI i integrację backendu `TabPFN`.
+* Ułatwiono dalszą rozbudowę projektu w kierunku automatyzacji i pracy skryptowej.
+* Zwiększono czytelność obsługi modeli i przepływów dla użytkownika końcowego.
+* Ułatwiono pracę z projektem zarówno w trybie desktopowym, jak i terminalowym.
+
+### Documentation
+
+* Zaktualizowano opis projektu w README, uwzględniając:
+  * warstwę `cli`,
+  * eksperymentalny backend `TabPFN`,
+  * katalog `logs`,
+  * rozszerzony zakres testów.
+* Zaktualizowano sekcję aktualnego stanu projektu, uwzględniając:
+  * obsługę CLI,
+  * nowe testy,
+  * rozwój architektury,
+  * rozszerzenie funkcjonalności ML.
+* Zaktualizowano opis struktury repozytorium o:
+  * `src/AOA/cli.py`,
+  * `src/AOA/core/tabpfn_models.py`,
+  * `src/AOA/utils/error_utils.py`,
+  * `tests/cli/`,
+  * `tests/core/test_tabpfn_models.py`,
+  * `logs/`.
+* Uzupełniono dokumentację o informację, że aplikacja może być obsługiwana zarówno przez GUI, jak i z poziomu terminala.
+* Krótko odświeżono README pod kątem zgodności z aktualnym stanem projektu i nowym workflow pracy.
+
 ## [0.3.0] - 2026-04-09
 
 ### Added
