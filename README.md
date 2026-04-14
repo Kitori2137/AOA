@@ -125,7 +125,7 @@ TOOLS/
 #### 1. Sklonuj repozytorium i przejdź do katalogu projektu
 
 ```bash
-git clone git@github.com:UZ-FENS/passthebranch-Kitori2137.git
+git clone git@github.com:/Kitori777/AOA.git
 cd passthebranch-Kitori2137
 ```
 
